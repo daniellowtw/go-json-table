@@ -95,9 +95,9 @@ func transformDataForFrontend(input []interface{}, headers []string) interface{}
 			res = append(res, re)
 			continue
 		}
-		newItem := make(map[string]string)
+		var newItem []string
 		for _, header := range headers {
-			newItem[header] = stringify(item[header])
+			newItem = append(newItem, stringify(item[header]))
 		}
 		res = append(res, newItem)
 	}
