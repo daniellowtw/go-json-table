@@ -17,6 +17,7 @@ var delimiter = flag.String("delimiter", "\t", "delimiter")
 var showHelp = flag.Bool("help", false, "display help")
 var runServer = flag.Bool("server", false, "view in browser instead")
 var serverPort = flag.Int("port", 8888, "port for server")
+var selectColumn = flag.String("select", "", "comma separate columns in that order")
 
 func main() {
 	flag.Parse()
@@ -145,6 +146,9 @@ foo       bar
 }
 
 func extractHeaders(res []interface{}) []string {
+	if *selectColumn != "" {
+		return trimSpaceForSlice(strings.Split(*selectColumn, ","))
+	}
 	var headers []string
 	for _, re := range res {
 		item, ok := re.(map[string]interface{})
@@ -178,4 +182,13 @@ func stringify(x interface{}) string {
 		d, _ := json.Marshal(x)
 		return string(d)
 	}
+}
+
+func trimSpaceForSlice(xs []string) []string {
+	var res []string
+	for _, x := range xs {
+		b := strings.TrimSpace(x)
+		res = append(res, b)
+	}
+	return res
 }
