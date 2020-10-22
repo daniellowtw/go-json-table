@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
+	"log"
+	"net"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
@@ -11,6 +15,8 @@ import (
 
 var delimiter = flag.String("delimiter", "\t", "delimiter")
 var showHelp = flag.Bool("help", false, "display help")
+var runServer = flag.Bool("server", false, "view in browser instead")
+var serverPort = flag.Int("port", 8888, "port for server")
 
 func main() {
 	flag.Parse()
@@ -28,8 +34,77 @@ func main() {
 		os.Exit(1)
 	}
 
-	headers := extractHeaders(res)
+	if *runServer {
+		serveHTMLPage(*serverPort, res)
+	} else {
+		printToStdOut(res)
+	}
+}
 
+func serveHTMLPage(port int, res []interface{}) {
+	http.HandleFunc("/json", func(writer http.ResponseWriter, request *http.Request) {
+		json.NewEncoder(writer).Encode(res)
+	})
+	http.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		pattern := `<html>
+<head>
+	<script src="https://unpkg.com/gridjs/dist/gridjs.production.min.js"></script>
+	<link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
+</head>
+<body>
+    <div id="wrapper"></div>
+	<script>
+	new gridjs.Grid({
+	  search: true,
+	  sort: true,
+	  columns: {{.Headers}},
+	  data: {{.Data}},
+	}).render(document.getElementById("wrapper"));
+	</script>
+</body></html>`
+		glob, err := template.New("").Parse(pattern)
+		if err != nil {
+			log.Fatal(err)
+		}
+		headers := extractHeaders(res)
+		if err := glob.Execute(writer, map[string]interface{}{
+			"Headers": headers,
+			"Data":    transformDataForFrontend(res, headers),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	})
+	addr := fmt.Sprintf("localhost:%d", port)
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Visit http://%s\n", addr)
+	if err := http.Serve(l, nil); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// The frontend library doesn't handle nested objects well so we just make sure it's one layer deep.
+func transformDataForFrontend(input []interface{}, headers []string) interface{} {
+	var res []interface{}
+	for _, re := range input {
+		item, ok := re.(map[string]interface{})
+		if !ok {
+			res = append(res, re)
+			continue
+		}
+		newItem := make(map[string]string)
+		for _, header := range headers {
+			newItem[header] = stringify(item[header])
+		}
+		res = append(res, newItem)
+	}
+	return res
+}
+
+func printToStdOut(res []interface{}) {
+	headers := extractHeaders(res)
 	fmt.Println(strings.Join(headers, *delimiter))
 
 	for _, re := range res {
